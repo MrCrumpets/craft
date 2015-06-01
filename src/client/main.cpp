@@ -48,8 +48,6 @@ private:
         asio::async_read(socket_,
             asio::buffer(read_msg_.data(), chat_message::header_length),
             [this](error_code ec, std::size_t /*length*/) {
-                cout << "read header\n" << endl;
-                std::cout.write(read_msg_.data(), chat_message::header_length);
                 if(!ec && read_msg_.decode_header()){
                     do_read_body();
                 }
@@ -82,8 +80,6 @@ private:
          asio::buffer(write_msgs_.front().data(), write_msgs_.front().length()),
          [this](std::error_code ec, std::size_t /*length*/){
              if(!ec){
-                 std::cout << "hello\n";
-                 std::cout.write(write_msgs_.front().data(), write_msgs_.front().length());
                  write_msgs_.pop_front();
                  if(!write_msgs_.empty()){
                      //do_write();

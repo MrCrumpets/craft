@@ -99,7 +99,6 @@ private:
         asio::async_write(socket_,
              asio::buffer(write_msgs_.front().data(), write_msgs_.front().length()),
              [this, self](asio::error_code ec, std::size_t /*length*/){
-                 std::cout << "writing message\n";
                  if(!ec){
                      write_msgs_.pop_front();
                      if(!write_msgs_.empty()){
