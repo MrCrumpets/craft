@@ -6,5 +6,5 @@ find_package(Threads)
 
 set(SOURCE_FILES main.cpp)
 
-add_executable(server ${SOURCE_FILES})
+add_executable(server ${SOURCE_FILES} ../shared/chat_message.hpp)
 target_link_libraries(server ${CMAKE_THREAD_LIBS_INIT})
