@@ -40,7 +40,7 @@ public:
     }
 
     std::size_t length() const {
-        return header_length + max_body_length;
+        return header_length + body_length_;
     }
 
     const char* body() const {
