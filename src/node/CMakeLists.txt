@@ -5,6 +5,7 @@ include_directories(/home/nathan/Downloads/asio-1.10.6/include)
 find_package(Threads)
 
 set(SOURCE_FILES main.cpp)
+add_definitions(-DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 
-add_executable(server ${SOURCE_FILES} ../shared/chat_message.hpp)
-target_link_libraries(server ${CMAKE_THREAD_LIBS_INIT})
+add_executable(node ${SOURCE_FILES} ../shared/chat_message.hpp)
+target_link_libraries(node ${CMAKE_THREAD_LIBS_INIT})
