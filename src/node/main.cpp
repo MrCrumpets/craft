@@ -7,7 +7,6 @@
 using namespace std;
 using asio::ip::udp;
 
-
 class server {
 public:
     server(asio::io_service& io_service, short listen_port, short send_port)
@@ -31,6 +30,11 @@ public:
     }
 
 private:
+    enum class state{
+        Follower,
+        Candidate,
+        Leader
+    };
     void do_receive() {
         socket_.async_receive_from(
             asio::buffer(data_), remote_endpoint_,
@@ -56,6 +60,7 @@ private:
             });
     }
 
+    state state_;
     asio::steady_timer timer_;
     asio::io_service &io_service_;
     udp::socket socket_;
