@@ -15,9 +15,18 @@ enum Message {
 };
 
 
-class server {
+/*
+ * Implementations of raft behaviours for the various
+ * node states.
+ */
+class AbstractState {};
+class Follower : public AbstractState {};
+class Candidate : public AbstractState {};
+class Leader : public AbstractState {};
+
+class node {
 public:
-    server(asio::io_service& io_service, short listen_port, short send_port)
+    node(asio::io_service& io_service, short listen_port, short send_port)
             : io_service_(io_service),
               socket_(io_service, udp::endpoint(udp::v4(), listen_port)),
               timer_(io_service)
@@ -35,11 +44,6 @@ public:
     }
 
 private:
-    enum class state{
-        Follower,
-        Candidate,
-        Leader
-    };
     void do_receive() {
         socket_.async_receive_from(
             asio::buffer(in_buffer_), remote_endpoint_,
@@ -59,20 +63,19 @@ private:
         socket_.async_send_to(
             asio::buffer(out_buffer_), remote_endpoint_,
             [this](std::error_code /*ec*/, std::size_t /*bytes_sent*/){
-                timer_.expires_from_now(std::chrono::milliseconds(std::rand() % min_election_time + (max_election_time - min_election_time)));
+                timer_.expires_from_now(std::chrono::milliseconds());
                 timer_.wait();
                 do_send();
             });
     }
 
-    state state_;
+    std::unique_ptr<AbstractState> state_;
     asio::steady_timer timer_;
     asio::io_service &io_service_;
     udp::socket socket_;
     udp::endpoint remote_endpoint_;
     enum {
-        min_election_time = 150,
-        max_election_time = 300,
+        election_timeout = 300,
     };
     std::array<Message, 1> out_buffer_;
     std::array<Message, 1> in_buffer_;
@@ -91,7 +94,7 @@ int main(int argc, char* argv[]) {
         }
 
         asio::io_service io_service;
-        server c(io_service, std::atoi(argv[1]), send_port);
+        node c(io_service, std::atoi(argv[1]), send_port);
         io_service.run();
 
     }
