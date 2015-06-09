@@ -15,15 +15,6 @@ enum Message {
 };
 
 
-/*
- * Implementations of raft behaviours for the various
- * node states.
- */
-class AbstractState {};
-class Follower : public AbstractState {};
-class Candidate : public AbstractState {};
-class Leader : public AbstractState {};
-
 class node {
 public:
     node(asio::io_service& io_service, short listen_port, short send_port)
@@ -35,8 +26,8 @@ public:
 
         udp::resolver resolver(io_service);
         udp::resolver::query query(udp::v4(), "localhost", std::to_string(send_port));
-        remote_endpoint_ = *resolver.resolve(query);
 
+        remote_endpoint_ = *resolver.resolve(query);
         out_buffer_[0] = AppendEntries;
 
         do_receive();
@@ -69,7 +60,6 @@ private:
             });
     }
 
-    std::unique_ptr<AbstractState> state_;
     asio::steady_timer timer_;
     asio::io_service &io_service_;
     udp::socket socket_;

@@ -7,5 +7,5 @@ find_package(Threads)
 set(SOURCE_FILES main.cpp)
 add_definitions(-DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 
-add_executable(node ${SOURCE_FILES})
+add_executable(node ${SOURCE_FILES} Connection.cpp Connection.h NodeState.cpp NodeState.h)
 target_link_libraries(node ${CMAKE_THREAD_LIBS_INIT})
