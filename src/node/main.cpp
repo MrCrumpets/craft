@@ -6,7 +6,6 @@
 
 using namespace std;
 
-
 int main(int argc, char* argv[]) {
     try {
         if(argc < 2 || argc > 3) {

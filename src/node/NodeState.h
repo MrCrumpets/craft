@@ -18,7 +18,7 @@ enum Constants {
     election_timeout = 500
 };
 
-class StateContext {
+class State {
     // Persistent (all states)
     uint64_t currentTerm_;
     uint64_t votedFor_;
@@ -29,31 +29,49 @@ class StateContext {
     uint64_t lastApplied_; // index of highest log entry applied
 
     std::unique_ptr<NodeState> state_;
+    asio::io_service &io_service_;
+
+public:
+    State(asio::io_service& io_service) : io_service_(io_service) {}
 };
 
 class NodeState {
-    std::unique_ptr<StateContext> ctx_;
+protected:
+    std::unique_ptr<State> ctx_;
+    asio::io_service &io_service_;
+
 public:
     virtual void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex,
                                std::vector<uint64_t> entries, uint64_t leaderCommit) = 0;
 
     virtual void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm) = 0;
+
+    NodeState(asio::io_service& io_service) : io_service_(io_service) {}
 };
 
-class FollowerState : public NodeState {
+class Follower : public NodeState {
+public:
+    Follower(asio::io_service &io_service);
+
     void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex,
                                std::vector<uint64_t> entries, uint64_t leaderCommit);
 
     void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm);
 
-    void Followerstate();
-
     asio::steady_timer election_timer_;
 };
 
-class CandidateState : public NodeState {};
-class LeaderState : public NodeState {
-    // Volatile (leader state)
+class Candidate : public NodeState {
+
+public:
+    Candidate(asio::io_service &io_service) : NodeState(io_service) { }
+};
+class Leader : public NodeState {
+public:
+    Leader(asio::io_service &io_service) : NodeState(io_service) { }
+
+private:
+// Volatile (leader state)
     std::vector<uint64_t> nextIndex_;
     std::vector<uint64_t> matchIndex_;
 };
