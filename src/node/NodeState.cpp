@@ -6,8 +6,11 @@
 #include <asio.hpp>
 
 
+State::State(asio::io_service& io_service) : io_service_(io_service) {
+        state_ = std::unique_ptr<NodeState>(new Follower(io_service));
+}
+
 Follower::Follower(asio::io_service &io_service) : NodeState(io_service), election_timer_(io_service) {
-    // TODO: Register async handler for election_timer running out (ie. convert to Candidate
     election_timer_.expires_from_now(std::chrono::milliseconds(Constants::election_timeout));
     election_timer_.async_wait([this](const std::system_error &ec) {
         std::cout << "Election time!" << std::endl;

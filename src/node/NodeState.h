@@ -19,6 +19,7 @@ enum Constants {
 };
 
 class State {
+
     // Persistent (all states)
     uint64_t currentTerm_;
     uint64_t votedFor_;
@@ -27,12 +28,11 @@ class State {
     // Volatile (all states)
     uint64_t commitIndex_; // index of highest log entry committed
     uint64_t lastApplied_; // index of highest log entry applied
-
-    std::unique_ptr<NodeState> state_;
     asio::io_service &io_service_;
+    std::unique_ptr<NodeState> state_;
 
 public:
-    State(asio::io_service& io_service) : io_service_(io_service) {}
+    State(asio::io_service &io_service);
 };
 
 class NodeState {
