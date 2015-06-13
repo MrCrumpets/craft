@@ -4,7 +4,7 @@
 
 #include "Candidate.h"
 
-Candidate::Candidate(asio::io_service &io_service) : NodeState(io_service) {
+Candidate::Candidate(asio::io_service &io_service, State *s) : NodeState(io_service, s) {
     std::cout << "I'm a candidate now!" << std::endl;
 }
 

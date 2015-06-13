@@ -9,7 +9,7 @@
 
 class Leader : public NodeState {
 public:
-    Leader(asio::io_service &io_service) : NodeState(io_service) { }
+    Leader(asio::io_service &io_service, State *s) : NodeState(io_service, s) { }
 
 private:
 // Volatile (leader state)

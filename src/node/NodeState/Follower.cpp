@@ -4,10 +4,11 @@
 
 #include "Follower.h"
 
-Follower::Follower(asio::io_service &io_service) : NodeState(io_service), election_timer_(io_service) {
+Follower::Follower(asio::io_service &io_service, State *s) : NodeState(io_service, s), election_timer_(io_service) {
     election_timer_.expires_from_now(std::chrono::milliseconds(election_timeout));
     election_timer_.async_wait([this](const std::system_error &ec) {
         std::cout << "Election time!" << std::endl;
+        ctx_->changeState(States::Candidate);
     });
 }
 

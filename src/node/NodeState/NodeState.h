@@ -43,7 +43,7 @@ public:
 
 class NodeState {
 protected:
-    std::unique_ptr<State> ctx_;
+    State* ctx_;
     asio::io_service &io_service_;
 
 public:
@@ -52,7 +52,7 @@ public:
 
     virtual void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm) = 0;
 
-    NodeState(asio::io_service& io_service) : io_service_(io_service) {}
+    NodeState(asio::io_service &io_service, State *s) : io_service_(io_service), ctx_(s) {}
 
 };
 

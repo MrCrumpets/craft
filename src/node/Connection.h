@@ -37,7 +37,6 @@ namespace Network {
             out_buffer_[0] = AppendEntries;
 
             do_receive();
-            do_send();
         }
 
     private:
@@ -49,6 +48,7 @@ namespace Network {
                             switch (in_buffer_[0]) {
                                 case AppendEntries:
                                     std::cout << "Append Entries Message\n";
+                                    break;
                             }
                         }
 

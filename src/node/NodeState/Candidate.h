@@ -11,7 +11,7 @@
 class Candidate : public NodeState {
 
 public:
-    Candidate(asio::io_service &io_service);
+    Candidate(asio::io_service &io_service, State *s);
 
     void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex, std::vector<uint64_t> entries,
                        uint64_t leaderCommit);
