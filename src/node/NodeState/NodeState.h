@@ -14,6 +14,11 @@
 
 class NodeState;
 
+
+enum class States {
+    Follower, Candidate, Leader
+};
+
 enum Constants {
     election_timeout = 500
 };
@@ -33,6 +38,7 @@ class State {
 
 public:
     State(asio::io_service &io_service);
+    void changeState(States s);
 };
 
 class NodeState {
@@ -47,24 +53,18 @@ public:
     virtual void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm) = 0;
 
     NodeState(asio::io_service& io_service) : io_service_(io_service) {}
-};
 
-class Follower : public NodeState {
-public:
-    Follower(asio::io_service &io_service);
-
-    void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex,
-                               std::vector<uint64_t> entries, uint64_t leaderCommit);
-
-    void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm);
-
-    asio::steady_timer election_timer_;
 };
 
 class Candidate : public NodeState {
 
 public:
     Candidate(asio::io_service &io_service) : NodeState(io_service) { }
+
+    void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex, std::vector<uint64_t> entries,
+                       uint64_t leaderCommit);
+
+    void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm);
 };
 class Leader : public NodeState {
 public:
@@ -74,6 +74,11 @@ private:
 // Volatile (leader state)
     std::vector<uint64_t> nextIndex_;
     std::vector<uint64_t> matchIndex_;
+
+    void AppendEntries(uint64_t term, uint64_t leaderId, uint64_t prevLogIndex, std::vector<uint64_t> entries,
+                       uint64_t leaderCommit);
+
+    void RequestVote(uint64_t term, uint64_t candidateId, uint64_t lastLogIndex, uint64_t lastLogTerm);
 };
 
 

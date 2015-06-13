@@ -3,7 +3,7 @@
 #include <asio/steady_timer.hpp>
 #include <asio.hpp>
 #include "Connection.h"
-#include "NodeState.h"
+#include "NodeState/NodeState.h"
 
 using namespace std;
 
@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
         }
 
         asio::io_service io_service;
-        Connection c(io_service, std::atoi(argv[1]), send_port);
+        Network::Connection c(io_service, std::atoi(argv[1]), send_port);
         State s(io_service);
         io_service.run();
 
