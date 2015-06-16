@@ -6,7 +6,7 @@
 
 Candidate::Candidate(asio::io_service &io_service, State *s) : NodeState(io_service, s) {
     std::cout << "I'm a candidate now!" << std::endl;
-    // TODO: Increment current term
+    ctx_->incrementTerm();
     // TODO: Vote for self
     // TODO: Reset election timer
     // TODO: Send RequestVote RPC's to all other servers (need mechanism for sending messages to all servers)

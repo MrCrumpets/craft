@@ -11,6 +11,10 @@ State::State(asio::io_service& io_service) : io_service_(io_service) {
     state_ = std::unique_ptr<NodeState>(new Follower(io_service, this));
 }
 
+void State::incrementTerm() {
+    currentTerm_++;
+}
+
 void State::changeState(const States s) {
     switch(s) {
         case States::Follower:

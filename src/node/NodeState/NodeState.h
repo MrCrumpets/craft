@@ -39,6 +39,7 @@ class State {
 public:
     State(asio::io_service &io_service);
     void changeState(States s);
+    void incrementTerm();
 };
 
 class NodeState {
