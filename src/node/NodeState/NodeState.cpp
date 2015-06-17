@@ -7,8 +7,12 @@
 #include "Candidate.h"
 #include "Leader.h"
 
-State::State(asio::io_service& io_service) : io_service_(io_service) {
-    state_ = std::unique_ptr<NodeState>(new Follower(io_service, this));
+State::State(const std::string &address, short in_port, short out_port) {
+    state_ = std::unique_ptr<NodeState>(new Follower(io_service_, this));
+}
+
+void State::run() {
+    io_service_.run();
 }
 
 void State::incrementTerm() {
@@ -22,9 +26,6 @@ void State::changeState(const States s) {
             break;
         case States::Candidate:
             state_.reset(new Candidate(io_service_, this));
-            break;
-        case States::Leader:
-            state_.reset(new Leader(io_service_, this));
             break;
     }
 }

@@ -14,16 +14,8 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        short send_port = -1;
-        if(argc == 3) {
-            send_port = std::atoi(argv[2]);
-        }
-
-        asio::io_service io_service;
-        //Network::Connection c(io_service, std::atoi(argv[1]), send_port);
-        State s(io_service);
-        io_service.run();
-
+        State s("localhost", 12345, 12346);
+        s.run();
     }
     catch(std::exception& e) {
         std::cerr << "Error" << std::endl;

@@ -11,9 +11,9 @@
 #include <asio/deadline_timer.hpp>
 #include <asio/basic_waitable_timer.hpp>
 #include <asio/steady_timer.hpp>
+#include "../Connection.h"
 
 class NodeState;
-
 
 enum class States {
     Follower, Candidate, Leader
@@ -24,7 +24,6 @@ enum Constants {
 };
 
 class State {
-
     // Persistent (all states)
     uint64_t currentTerm_;
     uint64_t votedFor_;
@@ -33,13 +32,20 @@ class State {
     // Volatile (all states)
     uint64_t commitIndex_; // index of highest log entry committed
     uint64_t lastApplied_; // index of highest log entry applied
-    asio::io_service &io_service_;
+    asio::io_service io_service_;
     std::unique_ptr<NodeState> state_;
+    std::shared_ptr<Network::Connection> connection_;
 
 public:
-    State(asio::io_service &io_service);
+    State(const State&) = delete;
+    State& operator=(const State&) = delete;
+
+    State(const std::string &address, short in_port, short out_port);
+
     void changeState(States s);
     void incrementTerm();
+
+    void run();
 };
 
 class NodeState {
