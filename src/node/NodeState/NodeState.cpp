@@ -7,7 +7,7 @@
 #include "Candidate.h"
 #include "Leader.h"
 
-State::State(const std::string &address, short in_port, short out_port) {
+State::State(const std::string &address, const short in_port, const std::vector<short> &ports) {
     state_ = std::unique_ptr<NodeState>(new Follower(io_service_, this));
 }
 

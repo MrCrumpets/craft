@@ -24,6 +24,7 @@ enum Constants {
 };
 
 class State {
+
     // Persistent (all states)
     uint64_t currentTerm_;
     uint64_t votedFor_;
@@ -40,7 +41,7 @@ public:
     State(const State&) = delete;
     State& operator=(const State&) = delete;
 
-    State(const std::string &address, short in_port, short out_port);
+    State(const std::string &address, const short in_port, const std::vector<short> &ports);
 
     void changeState(States s);
     void incrementTerm();
