@@ -37,7 +37,7 @@ void Connection::do_receive() {
             });
 }
 
-void Connection::do_send(Message &m) {
+void Connection::do_send(std::string &host, short port, Message &m) {
     socket_.async_send_to(
             asio::buffer(out_buffer_), remote_endpoint_,
             [this](std::error_code /*ec*/, std::size_t /*bytes_sent*/) {

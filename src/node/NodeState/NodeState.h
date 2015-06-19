@@ -24,7 +24,6 @@ enum Constants {
 };
 
 class State {
-
     // Persistent (all states)
     uint64_t currentTerm_;
     uint64_t votedFor_;
@@ -36,15 +35,15 @@ class State {
     asio::io_service io_service_;
     std::unique_ptr<NodeState> state_;
     std::shared_ptr<Network::Connection> connection_;
+    const std::vector<std::pair<short, std::string>> &peers_;
 
 public:
     State(const State&) = delete;
     State& operator=(const State&) = delete;
 
-    State(const std::string &address, const short in_port, const std::vector<short> &ports);
+    State(const std::string &address, const short in_port, const std::vector<std::pair<short, std::string>> &peers);
 
     void changeState(States s);
-    void incrementTerm();
 
     void run();
 };

@@ -7,16 +7,12 @@
 #include "Candidate.h"
 #include "Leader.h"
 
-State::State(const std::string &address, const short in_port, const std::vector<short> &ports) {
+State::State(const std::string &address, const short in_port, const std::vector<std::pair<short, std::string>> &peers) : peers_(peers){
     state_ = std::unique_ptr<NodeState>(new Follower(io_service_, this));
 }
 
 void State::run() {
     io_service_.run();
-}
-
-void State::incrementTerm() {
-    currentTerm_++;
 }
 
 void State::changeState(const States s) {
@@ -29,3 +25,4 @@ void State::changeState(const States s) {
             break;
     }
 }
+

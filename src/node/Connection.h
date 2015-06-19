@@ -5,12 +5,11 @@
 #ifndef CRAFT_CONNECTION_H
 #define CRAFT_CONNECTION_H
 
-
 #include <asio/io_service.hpp>
 #include <asio/buffer.hpp>
-#include <chrono>
 #include <asio/ip/udp.hpp>
 #include <asio/steady_timer.hpp>
+#include <cereal/archives/binary.hpp>
 
 using asio::ip::udp;
 
@@ -25,6 +24,12 @@ namespace Network {
 
     class Message {
         MessageType type_;
+        uint64_t term, peerId, prevLogIndex;
+    public:
+        template<class Archive>
+                void serialize(Archive &archive) {
+            archive(type_, term, peerId, prevLogIndex);
+        }
     };
 
     class Connection {
@@ -33,7 +38,7 @@ namespace Network {
 
     private:
         void do_receive();
-        void do_send(Message &);
+        void do_send(std::string &host, short port, Message &);
 
         asio::steady_timer timer_;
         asio::io_service &io_service_;
