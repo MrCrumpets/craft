@@ -41,8 +41,5 @@ void Connection::do_send(Message &m) {
     socket_.async_send_to(
             asio::buffer(out_buffer_), remote_endpoint_,
             [this](std::error_code /*ec*/, std::size_t /*bytes_sent*/) {
-                timer_.expires_from_now(std::chrono::milliseconds());
-                timer_.wait();
-                do_send();
             });
 }
