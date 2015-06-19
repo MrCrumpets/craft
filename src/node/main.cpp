@@ -7,7 +7,13 @@
 
 using namespace std;
 
-std::vector<short> ports {12345, 12346, 12347, 12348, 12349};
+std::vector<std::pair<short, std::string>> nodes {
+        {12345, "localhost"},
+        {12346, "localhost"},
+        {12347, "localhost"},
+        {12348, "localhost"},
+        {12349, "localhost"},
+};
 
 int main(int argc, char* argv[]) {
     try {
@@ -16,9 +22,9 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         std::vector<std::thread> workers;
-        std::for_each(ports.begin(), ports.end(), [&workers](short port){
-            workers.push_back(std::thread([port](){
-                State s("localhost", port, ports);
+        std::for_each(nodes.begin(), nodes.end(), [&workers](std::pair<short, std::string> node){
+            workers.push_back(std::thread([node](){
+                State s(node.second, node.first, nodes);
                 s.run();
             }));
         });
