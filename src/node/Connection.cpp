@@ -38,6 +38,12 @@ void Connection::do_receive() {
 }
 
 void Connection::do_send(std::string &host, short port, Message &m) {
+    std::shared_ptr<std::stringstream> ss;
+    {
+        cereal::BinaryOutputArchive oarchive(*ss);
+        oarchive(m);
+    }
+    std::string s = ss->str();
     socket_.async_send_to(
             asio::buffer(out_buffer_), remote_endpoint_,
             [this](std::error_code /*ec*/, std::size_t /*bytes_sent*/) {
