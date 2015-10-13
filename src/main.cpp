@@ -9,7 +9,8 @@ using namespace std;
 
 std::vector<raft_node_endpoint_t> peers{
         {1ul, "localhost", 12345, 13001},
-        {2ul, "localhost", 12346, 13002}
+        {2ul, "localhost", 12346, 13002},
+        {3ul, "localhost", 12347, 13003}
 };
 
 int main(int argc, char* argv[]) {

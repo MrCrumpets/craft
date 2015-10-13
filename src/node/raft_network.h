@@ -112,8 +112,7 @@ CEREAL_REGISTER_TYPE(request_votes);
 CEREAL_REGISTER_TYPE(response);
 
 class connection {
-    asio::steady_timer timer_;
-    udp::socket socket_;
+    std::shared_ptr<udp::socket> socket_;
     udp::endpoint remote_endpoint_;
     std::array<char, 1024> in_buffer_;
     const raft_node* node_;
@@ -121,7 +120,8 @@ class connection {
     void do_receive();
 
 public:
-    connection(raft_node* node, asio::io_service &io_service, const std::string &addr, const short listen_port, const short send_port);
+    connection(raft_node* node, std::shared_ptr<udp::socket> socket, udp::endpoint endpoint);
+
     void do_send(std::shared_ptr<raft_message> m);
 
 };
