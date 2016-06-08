@@ -44,7 +44,7 @@ void connection::do_send(std::shared_ptr<raft_message> m) {
                   [buf](std::error_code /*ec*/, std::size_t /*bytes_sent*/) {});
 }
 
-raft_network::raft_network(raft_node* node, asio::io_service& io, const uuid_t &uuid,
+raft_network::raft_network(raft_node *node, asio::io_service &io, const node_id_t &uuid,
                            const std::vector<raft_node_endpoint_t> &peers) {
     auto endpoint = *std::find_if(peers.begin(), peers.end(), [&uuid](auto &row){ return row.uuid == uuid; });
     auto socket = std::make_shared<udp::socket>(io, udp::endpoint(udp::v4(), endpoint.in_port));
@@ -67,7 +67,7 @@ void raft_network::broadcast(std::shared_ptr<raft_message> message) {
     }
 }
 
-void raft_network::send_to_id(uuid_t id, std::shared_ptr<raft_message> message) {
+void raft_network::send_to_id(node_id_t id, std::shared_ptr<raft_message> message) {
     if(connections_.count(id)) {
         connections_[id]->do_send(message);
     }

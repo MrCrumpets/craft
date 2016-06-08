@@ -6,12 +6,13 @@
 #define CRAFT_STATE_H
 
 #include <stdint.h>
+#include <random>
 #include <vector>
 #include <asio/steady_timer.hpp>
 
 struct raft_node_endpoint_t;
 
-typedef std::uint64_t uuid_t;
+typedef std::uint64_t node_id_t;
 
 
 namespace raft {
@@ -34,7 +35,7 @@ struct state {
     std::vector<uint64_t> entryTerms_;
 
     // Volatile (all states)
-    uuid_t uuid;
+    node_id_t uuid;
     uint64_t commitIndex_; // index of highest log entry committed
     uint64_t lastApplied_; // index of highest log entry applied
     asio::steady_timer election_timer_;
@@ -43,14 +44,15 @@ struct state {
     std::mt19937 mt;
     std::shared_ptr<raft::config> config_;
 
-    state(asio::io_service &io_service, uuid_t uuid, std::shared_ptr<raft::config> config) :
+    state(asio::io_service &io_service, node_id_t uuid, std::shared_ptr<raft::config> config) :
             election_timer_(io_service), config_(config), uuid(uuid) {
         std::random_device rd;
         mt.seed(rd());
     }
     void incrementTerm() { currentTerm_++; }
     void setTerm(uint64_t term) { currentTerm_ = term; }
-    uuid_t getNodeID() { return uuid; }
+
+    node_id_t getNodeID() { return uuid; }
     void voteFor(uint64_t id) { votedFor_ = id; }
     const raft::config* getConf() { return config_.get(); }
     void resetTime(int a, int b) {

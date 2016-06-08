@@ -4,7 +4,7 @@
 
 #include "raft_node.h"
 
-raft_node::raft_node(const uuid_t &uuid, std::shared_ptr<raft::config> conf) :
+raft_node::raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf) :
         uuid_(uuid) {
     mode_ = std::unique_ptr<raft_rpc>(
             new follower_rpc(
@@ -12,6 +12,8 @@ raft_node::raft_node(const uuid_t &uuid, std::shared_ptr<raft::config> conf) :
                     std::make_unique<state>(io_service_, uuid, conf)
             ));
 }
+
+raft_node::raft_node(raft_node &&o) noexcept : uuid_(o.uuid_), mode_(std::move(o.mode_)) { }
 
 void raft_node::run() {
     io_service_.run();
@@ -157,7 +159,7 @@ void leader_rpc::heartbeat(const std::error_code &ec) {
     network_->broadcast(std::make_unique<append_entries>(
             state_->currentTerm_,
             state_->lastApplied_,
-            state_->entryTerms_.size()  ? state_->entryTerms_.back() : 1,
+            state_->entryTerms_.size() ? state_->entryTerms_.back() : 1,
             state_->getNodeID()
     ));
     state_->resetTime(leader_idle_time, leader_idle_time + 1);

@@ -15,7 +15,6 @@
 #include <cereal/types/base_class.hpp>
 #include <map>
 #include <stdint.h>
-#include <stdint-gcc.h>
 #include "state.h"
 
 using asio::ip::udp;
@@ -23,7 +22,7 @@ using asio::ip::udp;
 class raft_node;
 
 struct raft_node_endpoint_t {
-    uuid_t uuid;
+    node_id_t uuid;
     std::string addr;
     short out_port;
     short in_port;
@@ -58,14 +57,15 @@ struct raft_message {
 struct append_entries : public raft_message {
     uint64_t leader_term, prev_log_entry, prev_log_term;
     std::vector<uint64_t> entries;
-    uuid_t leader_id;
+    node_id_t leader_id;
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
         archive(cereal::base_class<raft_message>(this), prev_log_entry, prev_log_term, CEREAL_NVP(entries), leader_id);
     }
     append_entries() : raft_message(MessageType::AppendEntries) {}
-    append_entries(uint64_t lt, uint64_t pli, uint64_t plt, uuid_t lid) :
+
+    append_entries(uint64_t lt, uint64_t pli, uint64_t plt, node_id_t lid) :
         raft_message(MessageType::AppendEntries),
         leader_term(lt),
         prev_log_entry(pli),
@@ -75,14 +75,15 @@ struct append_entries : public raft_message {
 
 struct request_votes : public raft_message {
     uint64_t candidate_term, last_log_index, last_log_term;
-    uuid_t candidate_id;
+    node_id_t candidate_id;
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
         archive(cereal::base_class<raft_message>(this), candidate_term, last_log_index, last_log_term, candidate_id);
     }
     request_votes() : raft_message (MessageType::RequestVote) {}
-    request_votes(uint64_t ct, uint64_t lli, uint64_t llt, uuid_t cid) :
+
+    request_votes(uint64_t ct, uint64_t lli, uint64_t llt, node_id_t cid) :
             raft_message(MessageType::RequestVote),
             candidate_term(ct),
             last_log_index(lli),
@@ -127,14 +128,14 @@ public:
 };
 
 class raft_network {
-    std::map<uuid_t, std::unique_ptr<connection>> connections_;
+    std::map<node_id_t, std::unique_ptr<connection>> connections_;
 public:
-    raft_network(raft_node *node, asio::io_service &io, const uuid_t &uuid,
+    raft_network(raft_node *node, asio::io_service &io, const node_id_t &uuid,
                  const std::vector<raft_node_endpoint_t> &peers);
 
     void broadcast(std::shared_ptr<raft_message>);
 
-    void send_to_id(uuid_t id, std::shared_ptr<raft_message> msg);
+    void send_to_id(node_id_t id, std::shared_ptr<raft_message> msg);
 
 };
 
