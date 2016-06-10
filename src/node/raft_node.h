@@ -12,6 +12,7 @@
 #include <asio/deadline_timer.hpp>
 #include <asio/basic_waitable_timer.hpp>
 #include <asio/steady_timer.hpp>
+#include <spdlog/spdlog.h>
 #include "raft_network.h"
 #include "state.h"
 
@@ -96,11 +97,12 @@ public:
 };
 
 class raft_node {
-    // Misc
     node_id_t uuid_;
     asio::io_service io_service_;
     std::unique_ptr<raft_rpc> mode_;
 public:
+    std::shared_ptr<spdlog::logger> logger_;
+
     raft_node(const raft_node &) = delete;
 
     raft_node &operator=(const raft_node &) = delete;
