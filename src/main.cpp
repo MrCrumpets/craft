@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
         std::vector<std::thread> workers;
         for (auto &peer : peers) {
             workers.push_back(std::thread([&peer]() {
-                auto node = raft_node(peer.uuid, std::make_shared<raft::config>(peers));
+                raft_node node(peer.uuid, std::make_shared<raft::config>(peers));
                 node.run();
             }));
         }
