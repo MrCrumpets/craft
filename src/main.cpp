@@ -17,25 +17,12 @@ int main(int argc, char* argv[]) {
     try {
         // Start raft_nodes
         std::vector<std::thread> workers;
-        std::vector<raft_node> nodes;
         for (auto &peer : peers) {
-            nodes.emplace_back(peer.uuid, std::make_shared<raft::config>(peers));
-        }
-        for (auto &node : nodes) {
-            workers.push_back(std::thread([&node]() {
+            workers.push_back(std::thread([&peer]() {
+                auto node = raft_node(peer.uuid, std::make_shared<raft::config>(peers));
                 node.run();
             }));
         }
-        workers.push_back(std::thread([&nodes]() {
-            while (true) {
-                std::cout << "Assigned roles for cluster: " << std::endl;
-                for (auto &node : nodes) {
-                    std::cout << node.describe() << std::endl;
-                }
-                std::this_thread::sleep_for(2s);
-
-            }
-        }));
 
         // Wait for raft_nodes to finish
         std::for_each(workers.begin(), workers.end(), [](std::thread &t){
