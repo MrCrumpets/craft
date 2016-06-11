@@ -28,13 +28,6 @@ struct raft_node_endpoint_t {
     short in_port;
 };
 
-class membuf : public std::streambuf {
-public:
-    membuf(uint8_t * base, size_t length) {
-        setg((char*)base, (char*)base, (char*)base + length);
-    }
-};
-
 enum class MessageType {
     AppendEntries,
     AppendEntriesResponse,
@@ -61,7 +54,8 @@ struct append_entries : public raft_message {
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
-        archive(cereal::base_class<raft_message>(this), prev_log_entry, prev_log_term, CEREAL_NVP(entries), leader_id);
+        archive(cereal::base_class<raft_message>(this), prev_log_entry, prev_log_term, CEREAL_NVP(entries), leader_term,
+                leader_id);
     }
     append_entries() : raft_message(MessageType::AppendEntries) {}
 
