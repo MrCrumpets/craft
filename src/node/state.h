@@ -48,6 +48,7 @@ struct state {
             election_timer_(io_service), config_(config), uuid(uuid) {
         std::random_device rd;
         mt.seed(rd());
+        entryTerms_.push_back(1);
     }
     void incrementTerm() { currentTerm_++; }
     void setTerm(uint64_t term) { currentTerm_ = term; }

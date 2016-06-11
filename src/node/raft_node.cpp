@@ -20,8 +20,6 @@ void raft_node::run() {
     io_service_.run();
 }
 
-// TODO: Leader election works but segfaults on heartbeat because state is null. I believe
-// TODO: there is an unwanted switch to candidate somewhere
 void raft_node::changeState(const States s) {
     switch(s) {
         case States::Follower:
@@ -37,7 +35,6 @@ void raft_node::changeState(const States s) {
 }
 
 void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) const {
-    logger_->info("Received message");
     if(!msg) return;
     switch(msg->type_) {
         case MessageType::AppendEntries:
@@ -54,16 +51,20 @@ void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) const {
     }
 }
 
-follower_rpc::follower_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state>&& state)
-        : raft_rpc(ctx, std::move(network), std::move(state)) {
-    ctx_->logger_->info("Transitioned to Follower");
-    state_->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
-    state_->election_timer_.async_wait([this](const std::error_code &ec) {
+void reset_election_timer(raft_node *ctx, state *s) {
+    s->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
+    s->election_timer_.async_wait([ctx](const std::error_code &ec) {
         if(!ec) {
-            ctx_->logger_->warn("Election timer ran out. Restarting election.");
-            ctx_->changeState(States::Candidate);
+            ctx->logger_->warn("Election timer ran out. Restarting election.");
+            ctx->changeState(States::Candidate);
         }
     });
+}
+
+follower_rpc::follower_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state)
+        : raft_rpc(ctx, std::move(network), std::move(state)) {
+    ctx_->logger_->info("Transitioned to Follower");
+    reset_election_timer(ctx, state_.get());
 }
 
 void follower_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
@@ -73,15 +74,12 @@ void follower_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
         ctx_->logger_->warn("Leader term is behind current term {} < {}", msg->leader_term, state_->currentTerm_);
         network_->send_to_id(msg->leader_id, std::make_shared<response>(state_->currentTerm_, false));
     }
+    else {
+        state_->setTerm(msg->leader_term);
+    }
     // TODO: if an existing entry conflicts with a new one (same index but different terms), delete the existing entry and al that follow it
     // TODO: Append any new entries not already in the log
     // TODO: If leaderCommit > commitIndex, set commitEnd = min(leaderCommit, index of last new entry)
-    state_->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
-    state_->election_timer_.async_wait([this](const std::error_code &ec) {
-        if(!ec) {
-            ctx_->changeState(States::Candidate);
-        }
-    });
 }
 
 void follower_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
@@ -89,6 +87,8 @@ void follower_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
     if(state_->votedFor_ == 0 && msg->candidate_term >= state_->currentTerm_) {
         ctx_->logger_->info("Vote cast for {}", msg->candidate_id);
         network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, true));
+        // Restart election timer TODO: Not sure if this is correct behaviour
+        reset_election_timer(ctx_, state_.get());
     }
     else {
         ctx_->logger_->info("Vote denied for {}", msg->candidate_id);
@@ -102,13 +102,9 @@ candidate_rpc::candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&net
     state_->incrementTerm();
     state_->voteFor(state_->getNodeID());
 
-    state_->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
-    state_->election_timer_.async_wait([this](const std::error_code &ec) {
-        if(!ec) {
-            ctx_->logger_->warn("Election timer ran out. Restarting election.");
-            ctx_->changeState(States::Candidate);
-        }
-    });
+
+    // Restart election if enough votes aren't captured
+    reset_election_timer(ctx, state_.get());
 
     // Request Votes
     network_->broadcast(std::make_unique<request_votes>(
@@ -118,14 +114,15 @@ candidate_rpc::candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&net
             state_->getNodeID()
     ));
 
-    // TODO: If votes received from majority of servers: become leader
     // TODO: If AppendEntries RPC received from new leader: convert to follower
     // TODO: If election timeout elapses: start new election
 }
 
 void candidate_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
-    ctx_->logger_->info("Received heartbeat from Leader!");
+    ctx_->logger_->warn("Received heartbeat from {}! terms (me, other): ({}, {})", msg->leader_id, state_->currentTerm_,
+                        msg->leader_term);
     if(msg->leader_term >= state_->currentTerm_) {
+        state_->setTerm(msg->leader_term);
         ctx_->changeState(States::Follower);
     }
 }
@@ -159,17 +156,20 @@ void candidate_rpc::voteResponse(std::shared_ptr<response> msg) {
 leader_rpc::leader_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state>&& state)
         : raft_rpc(ctx, std::move(network), std::move(state)) {
     ctx_->logger_->info("Transitioned to Leader");
+    ctx_->logger_->info("New Term: {}", state_->currentTerm_);
     state_->resetTime(leader_idle_time, leader_idle_time + 1);
     state_->election_timer_.async_wait(std::bind(&leader_rpc::heartbeat, this, std::placeholders::_1));
 }
 
 void leader_rpc::heartbeat(const std::error_code &ec) {
     ctx_->logger_->info("Sending heartbeat");
+    ctx_->logger_->info("{} {} {} {}", state_->currentTerm_, state_->lastApplied_, state_->entryTerms_.back(),
+                        state_->uuid);
     network_->broadcast(std::make_unique<append_entries>(
             state_->currentTerm_,
             state_->lastApplied_,
-            state_->entryTerms_.size() ? state_->entryTerms_.back() : 1,
-            state_->getNodeID()
+            state_->entryTerms_.back(),
+            state_->uuid
     ));
     state_->resetTime(leader_idle_time, leader_idle_time + 1);
     state_->election_timer_.async_wait(std::bind(&leader_rpc::heartbeat, this, std::placeholders::_1));
@@ -182,4 +182,3 @@ void leader_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
 void leader_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
     ctx_->logger_->warn("Received vote request as leader!");
 }
-

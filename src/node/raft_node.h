@@ -23,7 +23,7 @@ enum class States {
 };
 
 enum Constants {
-    election_timeout = 500,
+    election_timeout = 1000,
     leader_idle_time = 250
 };
 
