@@ -16,8 +16,6 @@ raft_node::raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf) 
             ));
 }
 
-raft_node::raft_node(raft_node &&o) noexcept : uuid_(o.uuid_), mode_(std::move(o.mode_)), logger_(o.logger_) { }
-
 void raft_node::run() {
     io_service_.run();
 }

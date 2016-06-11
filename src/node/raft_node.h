@@ -109,8 +109,6 @@ public:
 
     raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf);
 
-    raft_node(raft_node &&) noexcept;
-
     void changeState(States s);
 
     std::string describe() {
