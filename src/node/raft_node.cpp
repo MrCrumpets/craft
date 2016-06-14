@@ -4,6 +4,8 @@
 
 #include "raft_node.h"
 
+std::mutex mode_change_mutex;
+
 raft_node::raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf) :
         uuid_(uuid) {
     logger_ = spdlog::rotating_logger_st(std::to_string(uuid), "logs/" + std::to_string(uuid), 1024 * 1024 * 5, 3,
@@ -34,8 +36,19 @@ void raft_node::changeState(const States s) {
     }
 }
 
-void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) const {
+void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) {
     if(!msg) return;
+
+    // When a message term is higher than current term we update term
+    // and transition to follower. However the way this currently happens
+    // causes segfaults when the state gets moved out of another mode
+    /*
+     if (msg->term_ > mode_->getState()->currentTerm_) {
+         mode_->getState()->setTerm(msg->term_);
+         changeState(States::Follower);
+     }
+      */
+
     switch(msg->type_) {
         case MessageType::AppendEntries:
             mode_->AppendEntries(std::static_pointer_cast<append_entries>(msg));
@@ -70,12 +83,9 @@ follower_rpc::follower_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&netwo
 void follower_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
     ctx_->logger_->info("Received hearbeat from leader {}", msg->leader_id);
     // TODO: reply false if log doesn't contain an entry at prevLogIndex
-    if(msg->leader_term < state_->currentTerm_) {
-        ctx_->logger_->warn("Leader term is behind current term {} < {}", msg->leader_term, state_->currentTerm_);
+    if (msg->term_ < state_->currentTerm_) {
+        ctx_->logger_->warn("Leader term is behind current term {} < {}", msg->term_, state_->currentTerm_);
         network_->send_to_id(msg->leader_id, std::make_shared<response>(state_->currentTerm_, false));
-    }
-    else {
-        state_->setTerm(msg->leader_term);
     }
     // TODO: if an existing entry conflicts with a new one (same index but different terms), delete the existing entry and al that follow it
     // TODO: Append any new entries not already in the log
@@ -84,7 +94,7 @@ void follower_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
 
 void follower_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
     ctx_->logger_->info("Vote request from {}", msg->candidate_id);
-    if(state_->votedFor_ == 0 && msg->candidate_term >= state_->currentTerm_) {
+    if (state_->votedFor_ == 0 && msg->term_ >= state_->currentTerm_) {
         ctx_->logger_->info("Vote cast for {}", msg->candidate_id);
         network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, true));
         // Restart election timer TODO: Not sure if this is correct behaviour
@@ -98,8 +108,8 @@ void follower_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
 
 candidate_rpc::candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state>&& state)
         : raft_rpc(ctx, std::move(network), std::move(state)) {
+
     ctx_->logger_->info("Transitioned to Candidate");
-    state_->incrementTerm();
     state_->voteFor(state_->getNodeID());
 
 
@@ -120,11 +130,7 @@ candidate_rpc::candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&net
 
 void candidate_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
     ctx_->logger_->warn("Received heartbeat from {}! terms (me, other): ({}, {})", msg->leader_id, state_->currentTerm_,
-                        msg->leader_term);
-    if(msg->leader_term >= state_->currentTerm_) {
-        state_->setTerm(msg->leader_term);
-        ctx_->changeState(States::Follower);
-    }
+                        msg->term_);
 }
 
 void candidate_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
@@ -142,13 +148,7 @@ void candidate_rpc::voteResponse(std::shared_ptr<response> msg) {
         }
     }
     else {
-        if(msg->term > state_->currentTerm_) {
-            ctx_->logger_->warn("Received term correction from {} to {}", state_->currentTerm_, msg->term);
-            // Update term if out of date
-            state_->setTerm(msg->term);
-            // Transition to follower
-            ctx_->changeState(States::Follower);
-        }
+        ctx_->logger_->warn("Vote request denied");
     }
 };
 

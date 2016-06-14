@@ -37,6 +37,7 @@ enum class MessageType {
 
 struct raft_message {
     MessageType type_;
+    uint64_t term_;
     raft_message() {}
 
     virtual void sayType() {}
@@ -44,59 +45,58 @@ struct raft_message {
     void serialize(Archive &archive) {
         archive(CEREAL_NVP(type_));
     }
-    raft_message(MessageType t) : type_(t) {}
+
+    raft_message(MessageType type, uint64_t term) : type_(type), term_(term) { }
 };
 
 struct append_entries : public raft_message {
-    uint64_t leader_term, prev_log_entry, prev_log_term;
+    uint64_t prev_log_entry, prev_log_term;
     std::vector<uint64_t> entries;
     node_id_t leader_id;
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
-        archive(cereal::base_class<raft_message>(this), prev_log_entry, prev_log_term, CEREAL_NVP(entries), leader_term,
-                leader_id);
+        archive(cereal::base_class<raft_message>(this), prev_log_entry, prev_log_term, CEREAL_NVP(entries), leader_id);
     }
-    append_entries() : raft_message(MessageType::AppendEntries) {}
 
-    append_entries(uint64_t lt, uint64_t pli, uint64_t plt, node_id_t lid) :
-        raft_message(MessageType::AppendEntries),
-        leader_term(lt),
+    append_entries() : raft_message(MessageType::AppendEntries, 0) { }
+
+    append_entries(uint64_t term, uint64_t pli, uint64_t plt, node_id_t lid) :
+            raft_message(MessageType::AppendEntries, term),
         prev_log_entry(pli),
         prev_log_term(plt),
         leader_id(lid) {}
 };
 
 struct request_votes : public raft_message {
-    uint64_t candidate_term, last_log_index, last_log_term;
+    uint64_t last_log_index, last_log_term;
     node_id_t candidate_id;
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
-        archive(cereal::base_class<raft_message>(this), candidate_term, last_log_index, last_log_term, candidate_id);
+        archive(cereal::base_class<raft_message>(this), last_log_index, last_log_term, candidate_id);
     }
-    request_votes() : raft_message (MessageType::RequestVote) {}
 
-    request_votes(uint64_t ct, uint64_t lli, uint64_t llt, node_id_t cid) :
-            raft_message(MessageType::RequestVote),
-            candidate_term(ct),
+    request_votes() : raft_message(MessageType::RequestVote, 0) { }
+
+    request_votes(uint64_t term, uint64_t lli, uint64_t llt, node_id_t cid) :
+            raft_message(MessageType::RequestVote, term),
             last_log_index(lli),
             last_log_term(llt),
             candidate_id(cid) {}
 };
 
 struct response : public raft_message {
-    uint64_t term;
     bool success;
     void n() {}
     template<class Archive>
     void serialize(Archive &archive) {
-        archive(cereal::base_class<raft_message>(this), term, success);
+        archive(cereal::base_class<raft_message>(this), success);
     }
-    response() : raft_message(MessageType::RequestVoteResponse) {};
+
+    response() : raft_message(MessageType::RequestVoteResponse, 0) { };
     response(uint64_t term, bool success) :
-            raft_message(MessageType::RequestVoteResponse),
-            term(term),
+            raft_message(MessageType::RequestVoteResponse, term),
             success(success) {};
 };
 
@@ -110,7 +110,7 @@ class connection {
     std::shared_ptr<udp::socket> socket_;
     udp::endpoint remote_endpoint_;
     std::array<char, 1024> in_buffer_;
-    const raft_node* node_;
+    raft_node *node_;
 
     void do_receive();
 

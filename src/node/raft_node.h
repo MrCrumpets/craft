@@ -115,7 +115,7 @@ public:
         return std::to_string(uuid_) + " " + mode_->getStateName();
     }
 
-    void dispatch_message(std::shared_ptr<raft_message> m) const;
+    void dispatch_message(std::shared_ptr<raft_message> m);
 
     void run();
 };
