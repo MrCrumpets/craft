@@ -18,7 +18,7 @@
 
 //class raft_node;
 
-enum class States {
+enum class State {
     Follower, Candidate, Leader
 };
 
@@ -28,78 +28,36 @@ enum Constants {
 };
 
 class raft_rpc {
-protected:
+private:
     raft_node *ctx_;
     std::unique_ptr<state> state_;
     std::unique_ptr<raft_network> network_;
+    State mode_;
+
+    void reset_election_timer();
+
+    void changeState(State s);
+
+    void heartbeat(const std::error_code &e = std::error_code::error_code());
 
 public:
-    virtual void AppendEntries(std::shared_ptr<append_entries>) = 0;
+    void rpc(std::shared_ptr<raft_message> msg);
 
-    virtual void RequestVote(std::shared_ptr<request_votes>) = 0;
+    void AppendEntries(std::shared_ptr<append_entries>);
 
-    virtual void voteResponse(std::shared_ptr<response>) {};
-
-    virtual std::string getStateName() = 0;
-
-    raft_rpc(raft_node *context, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state) : ctx_(context), network_(std::move(network)), state_(std::move(state)) {}
-
-    std::unique_ptr<state> getState() {
-       return std::move(state_);
-    }
-
-    std::unique_ptr<raft_network> getNetwork() {
-        return std::move(network_);
-    }
-
-};
-
-class candidate_rpc : public raft_rpc {
-    std::atomic<int> votes_acquired;
-
-public:
-    candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state);
-
-    void AppendEntries(std::shared_ptr<append_entries> msg);
-
-    void RequestVote(std::shared_ptr<request_votes> msg);
+    void RequestVote(std::shared_ptr<request_votes>);
 
     void voteResponse(std::shared_ptr<response>);
 
-    std::string getStateName() { return "candidate"; };
-};
-
-class follower_rpc : public raft_rpc {
+    raft_rpc(raft_node *context, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state);
 
 
-public:
-    follower_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state);
-
-    void AppendEntries(std::shared_ptr<append_entries> msg);
-
-    void RequestVote(std::shared_ptr<request_votes> msg);
-
-    std::string getStateName() { return "follower"; };
-};
-
-class leader_rpc : public raft_rpc {
-
-public:
-    leader_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state);
-
-    void AppendEntries(std::shared_ptr<append_entries> msg);
-
-    void RequestVote(std::shared_ptr<request_votes> msg);
-
-    void heartbeat(const std::error_code &ec);
-
-    std::string getStateName() { return "leader"; };
 };
 
 class raft_node {
     node_id_t uuid_;
     asio::io_service io_service_;
-    std::unique_ptr<raft_rpc> mode_;
+    raft_rpc rpc_;
 public:
     std::shared_ptr<spdlog::logger> logger_;
 
@@ -108,12 +66,6 @@ public:
     raft_node &operator=(const raft_node &) = delete;
 
     raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf);
-
-    void changeState(States s);
-
-    std::string describe() {
-        return std::to_string(uuid_) + " " + mode_->getStateName();
-    }
 
     void dispatch_message(std::shared_ptr<raft_message> m);
 

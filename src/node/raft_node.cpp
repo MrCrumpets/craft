@@ -4,147 +4,149 @@
 
 #include "raft_node.h"
 
-std::mutex mode_change_mutex;
-
 raft_node::raft_node(const node_id_t &uuid, std::shared_ptr<raft::config> conf) :
-        uuid_(uuid) {
+        uuid_(uuid),
+        rpc_(
+                this, std::make_unique<raft_network>(this, io_service_, uuid, conf->getPeers()),
+                std::make_unique<state>(io_service_, uuid, conf)
+        ) {
     logger_ = spdlog::rotating_logger_st(std::to_string(uuid), "logs/" + std::to_string(uuid), 1024 * 1024 * 5, 3,
                                          true);
     logger_->info("Instantiated node {}", uuid);
-    mode_ = std::unique_ptr<raft_rpc>(
-            new follower_rpc(
-                    this, std::make_unique<raft_network>(this, io_service_, uuid, conf->getPeers()),
-                    std::make_unique<state>(io_service_, uuid, conf)
-            ));
 }
 
 void raft_node::run() {
     io_service_.run();
 }
 
-void raft_node::changeState(const States s) {
-    switch(s) {
-        case States::Follower:
-            mode_.reset(new follower_rpc(this, mode_->getNetwork(), mode_->getState()));
-            break;
-        case States::Candidate:
-            mode_.reset(new candidate_rpc(this, mode_->getNetwork(), mode_->getState()));
-            break;
-        case States::Leader:
-            mode_.reset(new leader_rpc(this, mode_->getNetwork(), mode_->getState()));
-            break;
-    }
+void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) {
+    rpc_.rpc(msg);
 }
 
-void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) {
-    if(!msg) return;
 
-    // When a message term is higher than current term we update term
-    // and transition to follower. However the way this currently happens
-    // causes segfaults when the state gets moved out of another mode
-    /*
-     if (msg->term_ > mode_->getState()->currentTerm_) {
-         mode_->getState()->setTerm(msg->term_);
-         changeState(States::Follower);
-     }
-      */
+raft_rpc::raft_rpc(raft_node *context, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state)
+        : ctx_(context), network_(std::move(network)), state_(std::move(state)),
+          mode_(State::Follower) {
+    reset_election_timer(); // kick things off
+}
 
-    switch(msg->type_) {
+void raft_rpc::rpc(std::shared_ptr<raft_message> msg) {
+    if (!msg) return;
+
+    if (msg->term_ > state_->currentTerm_) {
+        state_->setTerm(msg->term_);
+        changeState(State::Follower);
+        return; // don't bother doing anything else with this message
+    }
+
+    switch (msg->type_) {
         case MessageType::AppendEntries:
-            mode_->AppendEntries(std::static_pointer_cast<append_entries>(msg));
+            AppendEntries(std::static_pointer_cast<append_entries>(msg));
             break;
         case MessageType::AppendEntriesResponse:
             break;
         case MessageType::RequestVote:
-            mode_->RequestVote(std::static_pointer_cast<request_votes>(msg));
+            RequestVote(std::static_pointer_cast<request_votes>(msg));
             break;
         case MessageType::RequestVoteResponse:
-            mode_->voteResponse(std::static_pointer_cast<response>(msg));
+            voteResponse(std::static_pointer_cast<response>(msg));
             break;
     }
 }
 
-void reset_election_timer(raft_node *ctx, state *s) {
-    s->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
-    s->election_timer_.async_wait([ctx](const std::error_code &ec) {
+void raft_rpc::changeState(const State s) {
+    switch (s) {
+        case State::Follower:
+            break;
+        case State::Candidate:
+            ctx_->logger_->info("Transitioned to Candidate");
+            state_->voteFor(state_->getNodeID());
+
+
+            // Restart election if enough votes aren't captured
+            reset_election_timer();
+
+            // Request Votes
+            network_->broadcast(std::make_unique<request_votes>(
+                    state_->currentTerm_,
+                    state_->lastApplied_,
+                    state_->entryTerms_.size() ? state_->entryTerms_.back() : 1,
+                    state_->getNodeID()
+            ));
+            break;
+        case State::Leader:
+            ctx_->logger_->info("Transitioned to Leader");
+            ctx_->logger_->info("New Term: {}", state_->currentTerm_);
+            heartbeat();
+            break;
+    }
+}
+
+
+void raft_rpc::reset_election_timer() {
+    state_->resetTime(election_timeout, election_timeout + 0.5 * election_timeout);
+    state_->election_timer_.async_wait([this](const std::error_code &ec) {
         if(!ec) {
-            ctx->logger_->warn("Election timer ran out. Restarting election.");
-            ctx->changeState(States::Candidate);
+            ctx_->logger_->warn("Election timer ran out. Restarting election.");
+            changeState(State::Candidate);
         }
     });
 }
 
-follower_rpc::follower_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state)
-        : raft_rpc(ctx, std::move(network), std::move(state)) {
-    ctx_->logger_->info("Transitioned to Follower");
-    reset_election_timer(ctx, state_.get());
-}
-
-void follower_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
-    ctx_->logger_->info("Received hearbeat from leader {}", msg->leader_id);
-    // TODO: reply false if log doesn't contain an entry at prevLogIndex
-    if (msg->term_ < state_->currentTerm_) {
-        ctx_->logger_->warn("Leader term is behind current term {} < {}", msg->term_, state_->currentTerm_);
-        network_->send_to_id(msg->leader_id, std::make_shared<response>(state_->currentTerm_, false));
-    }
-    // TODO: if an existing entry conflicts with a new one (same index but different terms), delete the existing entry and al that follow it
-    // TODO: Append any new entries not already in the log
-    // TODO: If leaderCommit > commitIndex, set commitEnd = min(leaderCommit, index of last new entry)
-}
-
-void follower_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
-    ctx_->logger_->info("Vote request from {}", msg->candidate_id);
-    if (state_->votedFor_ == 0 && msg->term_ >= state_->currentTerm_) {
-        ctx_->logger_->info("Vote cast for {}", msg->candidate_id);
-        network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, true));
-        // Restart election timer TODO: Not sure if this is correct behaviour
-        reset_election_timer(ctx_, state_.get());
-    }
-    else {
-        ctx_->logger_->info("Vote denied for {}", msg->candidate_id);
-        network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, false));
+void raft_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
+    switch (mode_) {
+        case State::Follower:
+            ctx_->logger_->info("Received hearbeat from leader {}", msg->leader_id);
+            // TODO: reply false if log doesn't contain an entry at prevLogIndex
+            if (msg->term_ < state_->currentTerm_) {
+                ctx_->logger_->warn("Leader term is behind current term {} < {}", msg->term_, state_->currentTerm_);
+                network_->send_to_id(msg->leader_id, std::make_shared<response>(state_->currentTerm_, false));
+            }
+            // TODO: if an existing entry conflicts with a new one (same index but different terms), delete the existing entry and al that follow it
+            // TODO: Append any new entries not already in the log
+            // TODO: If leaderCommit > commitIndex, set commitEnd = min(leaderCommit, index of last new entry)
+            break;
+        case State::Candidate:
+            ctx_->logger_->warn("Received heartbeat from {}! terms (me, other): ({}, {})", msg->leader_id,
+                                state_->currentTerm_, msg->term_);
+            break;
+        case State::Leader:
+            break;
     }
 }
 
-candidate_rpc::candidate_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state>&& state)
-        : raft_rpc(ctx, std::move(network), std::move(state)) {
-
-    ctx_->logger_->info("Transitioned to Candidate");
-    state_->voteFor(state_->getNodeID());
-
-
-    // Restart election if enough votes aren't captured
-    reset_election_timer(ctx, state_.get());
-
-    // Request Votes
-    network_->broadcast(std::make_unique<request_votes>(
-            state_->currentTerm_,
-            state_->lastApplied_,
-            state_->entryTerms_.size()  ? state_->entryTerms_.back() : 1,
-            state_->getNodeID()
-    ));
-
-    // TODO: If AppendEntries RPC received from new leader: convert to follower
-    // TODO: If election timeout elapses: start new election
+void raft_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
+    switch (mode_) {
+        case State::Follower:
+            ctx_->logger_->info("Vote request from {}", msg->candidate_id);
+            if (state_->votedFor_ == 0 && msg->term_ >= state_->currentTerm_) {
+                ctx_->logger_->info("Vote cast for {}", msg->candidate_id);
+                network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, true));
+                // Restart election timer TODO: Not sure if this is correct behaviour
+                reset_election_timer();
+            }
+            else {
+                ctx_->logger_->info("Vote denied for {}", msg->candidate_id);
+                network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, false));
+            }
+            break;
+        case State::Candidate:
+            ctx_->logger_->info("Vote requested from another candidate but already voted for self");
+            network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, false));
+            break;
+        case State::Leader:
+            break;
+    }
 }
 
-void candidate_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
-    ctx_->logger_->warn("Received heartbeat from {}! terms (me, other): ({}, {})", msg->leader_id, state_->currentTerm_,
-                        msg->term_);
-}
 
-void candidate_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
-    // TODO: Already voted for self. Should return false.
-    ctx_->logger_->info("Vote requested from Candidate");
-    network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, false));
-}
-
-void candidate_rpc::voteResponse(std::shared_ptr<response> msg) {
+void raft_rpc::voteResponse(std::shared_ptr<response> msg) {
     if(msg->success) {
         ctx_->logger_->info("Received vote!");
-        votes_acquired.fetch_add(1);
+        // TODO: Increment vote acquired
+        uint64_t votes_acquired = 0;
         if(state_->getConf()->isMajority(votes_acquired)) {
-            ctx_->changeState(States::Leader);
+            changeState(State::Leader);
         }
     }
     else {
@@ -153,15 +155,7 @@ void candidate_rpc::voteResponse(std::shared_ptr<response> msg) {
 };
 
 
-leader_rpc::leader_rpc(raft_node *ctx, std::unique_ptr<raft_network> &&network, std::unique_ptr<state>&& state)
-        : raft_rpc(ctx, std::move(network), std::move(state)) {
-    ctx_->logger_->info("Transitioned to Leader");
-    ctx_->logger_->info("New Term: {}", state_->currentTerm_);
-    state_->resetTime(leader_idle_time, leader_idle_time + 1);
-    state_->election_timer_.async_wait(std::bind(&leader_rpc::heartbeat, this, std::placeholders::_1));
-}
-
-void leader_rpc::heartbeat(const std::error_code &ec) {
+void raft_rpc::heartbeat(const std::error_code &ec) {
     ctx_->logger_->info("Sending heartbeat");
     ctx_->logger_->info("{} {} {} {}", state_->currentTerm_, state_->lastApplied_, state_->entryTerms_.back(),
                         state_->uuid);
@@ -172,13 +166,5 @@ void leader_rpc::heartbeat(const std::error_code &ec) {
             state_->uuid
     ));
     state_->resetTime(leader_idle_time, leader_idle_time + 1);
-    state_->election_timer_.async_wait(std::bind(&leader_rpc::heartbeat, this, std::placeholders::_1));
-}
-
-void leader_rpc::AppendEntries(std::shared_ptr<append_entries> msg) {
-    ctx_->logger_->warn("Received heartbeat as leader!");
-}
-
-void leader_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
-    ctx_->logger_->warn("Received vote request as leader!");
+    state_->election_timer_.async_wait(std::bind(&raft_rpc::heartbeat, this, std::placeholders::_1));
 }
