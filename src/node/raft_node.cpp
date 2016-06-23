@@ -23,7 +23,6 @@ void raft_node::dispatch_message(std::shared_ptr<raft_message> msg) {
     rpc_.rpc(msg);
 }
 
-
 raft_rpc::raft_rpc(raft_node *context, std::unique_ptr<raft_network> &&network, std::unique_ptr<state> &&state)
         : ctx_(context), network_(std::move(network)), state_(std::move(state)),
           mode_(State::Follower) {
@@ -55,13 +54,17 @@ void raft_rpc::rpc(std::shared_ptr<raft_message> msg) {
 }
 
 void raft_rpc::changeState(const State s) {
+    state_->votedFor_ = 0;
+
     switch (s) {
         case State::Follower:
             break;
         case State::Candidate:
             ctx_->logger_->info("Transitioned to Candidate");
+            // Reset vote count
+            state_->votes_acquired_ = 1;
             state_->voteFor(state_->getNodeID());
-
+            state_->incrementTerm();
 
             // Restart election if enough votes aren't captured
             reset_election_timer();
@@ -70,14 +73,19 @@ void raft_rpc::changeState(const State s) {
             network_->broadcast(std::make_unique<request_votes>(
                     state_->currentTerm_,
                     state_->lastApplied_,
-                    state_->entryTerms_.size() ? state_->entryTerms_.back() : 1,
+                    state_->entryTerms_.back(),
                     state_->getNodeID()
             ));
             break;
         case State::Leader:
             ctx_->logger_->info("Transitioned to Leader");
             ctx_->logger_->info("New Term: {}", state_->currentTerm_);
-            heartbeat();
+            state_->election_timer_.expires_from_now(std::chrono::milliseconds(leader_idle_time));
+            state_->election_timer_.async_wait([this](const std::error_code &ec) {
+                if (!ec) {
+                    heartbeat();
+                }
+            });
             break;
     }
 }
@@ -122,11 +130,10 @@ void raft_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
             if (state_->votedFor_ == 0 && msg->term_ >= state_->currentTerm_) {
                 ctx_->logger_->info("Vote cast for {}", msg->candidate_id);
                 network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, true));
-                // Restart election timer TODO: Not sure if this is correct behaviour
                 reset_election_timer();
             }
             else {
-                ctx_->logger_->info("Vote denied for {}", msg->candidate_id);
+                ctx_->logger_->info("Vote denied for {}, wrong term {}", msg->candidate_id, msg->term_);
                 network_->send_to_id(msg->candidate_id, std::make_shared<response>(state_->currentTerm_, false));
             }
             break;
@@ -141,11 +148,12 @@ void raft_rpc::RequestVote(std::shared_ptr<request_votes> msg) {
 
 
 void raft_rpc::voteResponse(std::shared_ptr<response> msg) {
+    if (mode_ == State::Leader) return;
+
     if(msg->success) {
         ctx_->logger_->info("Received vote!");
-        // TODO: Increment vote acquired
-        uint64_t votes_acquired = 0;
-        if(state_->getConf()->isMajority(votes_acquired)) {
+        state_->votes_acquired_++;
+        if (state_->getConf()->isMajority(state_->votes_acquired_)) {
             changeState(State::Leader);
         }
     }
@@ -159,12 +167,17 @@ void raft_rpc::heartbeat(const std::error_code &ec) {
     ctx_->logger_->info("Sending heartbeat");
     ctx_->logger_->info("{} {} {} {}", state_->currentTerm_, state_->lastApplied_, state_->entryTerms_.back(),
                         state_->uuid);
+
     network_->broadcast(std::make_unique<append_entries>(
             state_->currentTerm_,
             state_->lastApplied_,
             state_->entryTerms_.back(),
             state_->uuid
     ));
-    state_->resetTime(leader_idle_time, leader_idle_time + 1);
-    state_->election_timer_.async_wait(std::bind(&raft_rpc::heartbeat, this, std::placeholders::_1));
+    state_->election_timer_.expires_from_now(std::chrono::milliseconds(leader_idle_time));
+    state_->election_timer_.async_wait([this](const std::error_code &ec) {
+        if (!ec) {
+            heartbeat();
+        }
+    });
 }

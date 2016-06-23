@@ -29,8 +29,8 @@ namespace raft {
 
 struct state {
     // Persistent (all states)
-    uint64_t currentTerm_;
-    uint64_t votedFor_;
+    uint64_t currentTerm_ = 0;
+    uint64_t votedFor_ = 0;
     std::vector<uint64_t> logEntries_;
     std::vector<uint64_t> entryTerms_;
 
@@ -38,6 +38,7 @@ struct state {
     node_id_t uuid;
     uint64_t commitIndex_; // index of highest log entry committed
     uint64_t lastApplied_; // index of highest log entry applied
+    uint64_t votes_acquired_;
     asio::steady_timer election_timer_;
 
     // Misc

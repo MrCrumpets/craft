@@ -24,7 +24,7 @@ enum class State {
 
 enum Constants {
     election_timeout = 1000,
-    leader_idle_time = 250
+    leader_idle_time = 500
 };
 
 class raft_rpc {
