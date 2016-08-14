@@ -58,8 +58,10 @@ void raft_rpc::changeState(const State s) {
 
     switch (s) {
         case State::Follower:
+            mode_ = State::Follower;
             break;
         case State::Candidate:
+            mode_ = State::Candidate;
             ctx_->logger_->info("Transitioned to Candidate");
             // Reset vote count
             state_->votes_acquired_ = 1;
@@ -78,6 +80,7 @@ void raft_rpc::changeState(const State s) {
             ));
             break;
         case State::Leader:
+            mode_ = State::Leader;
             ctx_->logger_->info("Transitioned to Leader");
             ctx_->logger_->info("New Term: {}", state_->currentTerm_);
             state_->election_timer_.expires_from_now(std::chrono::milliseconds(leader_idle_time));
